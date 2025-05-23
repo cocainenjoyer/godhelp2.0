@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # База данных PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: movie-recommender-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: movie_recommender
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - movie-recommender-network
+
+  # Бэкенд на FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: movie-recommender-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: movie_recommender
+      DATA_PATH: /app/data/data_final.pkl
+      DESC_EMBEDDINGS_PATH: /app/data/description_embeddings.npy
+      KEYWORDS_EMBEDDINGS_PATH: /app/data/keywords_embeddings.npy
+    volumes:
+      - ./upload:/app/data
+    ports:
+      - "8000:8000"
+    networks:
+      - movie-recommender-network
+
+  # Фронтенд на Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: movie-recommender-frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: "your-secret-key-at-least-32-chars-long"
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/movie_recommender"
+    ports:
+      - "3000:3000"
+    networks:
+      - movie-recommender-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  movie-recommender-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
