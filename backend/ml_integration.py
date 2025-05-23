@@ -28,6 +28,8 @@ class MLIntegration:
         self.data_path = os.getenv("DATA_PATH", "/app/data/data_final.pkl")
         self.desc_embeddings_path = os.getenv("DESC_EMBEDDINGS_PATH", "/app/data/description_embeddings.npy")
         self.keywords_embeddings_path = os.getenv("KEYWORDS_EMBEDDINGS_PATH", "/app/data/keywords_embeddings.npy")
+        self.tmdb_api_key = os.getenv("TMDB_API_KEY", "your-tmdb-api-key")
+        self.poster_base_url = "https://image.tmdb.org/t/p/w500"
         
         # Загружаем данные и модели
         self.data = None
@@ -74,6 +76,43 @@ class MLIntegration:
         except Exception as e:
             print(f"Error initializing profile model: {e}")
     
+    def get_poster_url(self, title: str) -> str:
+        """
+        Получение URL постера для сериала по названию
+        
+        :param title: Название сериала
+        :return: URL постера или заглушка, если постер не найден
+        """
+        try:
+            # Проверяем, есть ли сериал в датасете
+            if self.data is not None:
+                show_data = self.data[self.data['title'] == title]
+                if not show_data.empty and 'poster_path' in show_data.columns:
+                    poster_path = show_data['poster_path'].iloc[0]
+                    if poster_path and not pd.isna(poster_path):
+                        return f"{self.poster_base_url}{poster_path}"
+            
+            # Если постер не найден в датасете, запрашиваем через API
+            search_url = f"https://api.themoviedb.org/3/search/tv"
+            params = {
+                "api_key": self.tmdb_api_key,
+                "query": title,
+                "language": "ru-RU"
+            }
+            response = requests.get(search_url, params=params)
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            
+            if results:
+                poster_path = results[0].get("poster_path")
+                if poster_path:
+                    return f"{self.poster_base_url}{poster_path}"
+        except Exception as e:
+            print(f"Error getting poster URL: {e}")
+        
+        # Если не удалось получить постер, возвращаем заглушку
+        return "https://via.placeholder.com/200?text=No+Poster"
+    
     def get_similar_shows(self, show_title: str, top_n: int = 5) -> List[Dict[str, Any]]:
         """
         Получение похожих сериалов по названию
@@ -113,11 +152,17 @@ class MLIntegration:
             # Преобразуем рекомендации в нужный формат
             result = []
             for _, row in recommendations.iterrows():
+                show_id = int(row.name) if hasattr(row, 'name') else 0
+                title = row.get('title', '')
+                
+                # Получаем URL постера
+                poster_url = self.get_poster_url(title)
+                
                 show = {
-                    "id": int(row.name) if hasattr(row, 'name') else 0,
-                    "title": row.get('title', ''),
+                    "id": show_id,
+                    "title": title,
                     "description": row.get('description', ''),
-                    "image": "https://via.placeholder.com/200",  # Заглушка для изображения
+                    "image": poster_url,  # Используем реальный URL постера
                     "rating": float(row.get('imdb_score', 0)),
                     "year": int(row.get('release_year', 0)),
                     "genres": row.get('genres', [])
@@ -151,11 +196,17 @@ class MLIntegration:
             # Преобразуем рекомендации в нужный формат
             result = []
             for _, row in recommendations.iterrows():
+                show_id = int(row.name) if hasattr(row, 'name') else 0
+                title = row.get('title', '')
+                
+                # Получаем URL постера
+                poster_url = self.get_poster_url(title)
+                
                 show = {
-                    "id": int(row.name) if hasattr(row, 'name') else 0,
-                    "title": row.get('title', ''),
+                    "id": show_id,
+                    "title": title,
                     "description": row.get('description', ''),
-                    "image": "https://via.placeholder.com/200",  # Заглушка для изображения
+                    "image": poster_url,  # Используем реальный URL постера
                     "rating": float(row.get('imdb_score', 0)),
                     "year": int(row.get('release_year', 0)),
                     "genres": row.get('genres', [])
@@ -204,11 +255,17 @@ class MLIntegration:
             # Преобразуем рекомендации в нужный формат
             result = []
             for _, row in recommendations.iterrows():
+                show_id = int(row.name) if hasattr(row, 'name') else 0
+                title = row.get('title', '')
+                
+                # Получаем URL постера
+                poster_url = self.get_poster_url(title)
+                
                 show = {
-                    "id": int(row.name) if hasattr(row, 'name') else 0,
-                    "title": row.get('title', ''),
+                    "id": show_id,
+                    "title": title,
                     "description": row.get('description', ''),
-                    "image": "https://via.placeholder.com/200",  # Заглушка для изображения
+                    "image": poster_url,  # Используем реальный URL постера
                     "rating": float(row.get('imdb_score', 0)),
                     "year": int(row.get('release_year', 0)),
                     "genres": row.get('genres', [])
@@ -237,9 +294,15 @@ class MLIntegration:
             # Преобразуем в нужный формат
             result = []
             for _, row in shows_to_import.iterrows():
+                show_id = int(row.name) if hasattr(row, 'name') else 0
+                title = row.get('title', '')
+                
+                # Получаем URL постера
+                poster_url = self.get_poster_url(title)
+                
                 show = {
-                    "id": int(row.name) if hasattr(row, 'name') else 0,
-                    "title": row.get('title', ''),
+                    "id": show_id,
+                    "title": title,
                     "description": row.get('description', ''),
                     "release_year": int(row.get('release_year', 0)),
                     "genres": row.get('genres', []),
@@ -249,7 +312,8 @@ class MLIntegration:
                     "tmdb_popularity": float(row.get('tmdb_popularity', 0)),
                     "age_certification": row.get('age_certification', ''),
                     "production_countries": row.get('production_countries', []),
-                    "keywords": row.get('keywords', [])
+                    "keywords": row.get('keywords', []),
+                    "poster_url": poster_url  # Добавляем URL постера
                 }
                 result.append(show)
             
